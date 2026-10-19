@@ -42,20 +42,3 @@ That matches swift-msi-probe exactly.
 The test machine had about 19,000 registered components, roughly 7,500 per user and 11,500 per machine. Walking all of them took about 2 s, and roughly 1.75 s of that went to `MsiEnumClientsExW`, one call per component. Swift installs per user, so limiting step 2 to the contexts the Swift products use skips the per-machine components and brought it to about 0.9 s. swift-msi-probe took 0.13 to 0.22 s on the same machine, because the cached `.msi` lets it look up a handful of components directly.
 
 So expect around a second per lookup on a machine with that many components. If that's too slow for `swiftly list`, swiftly can cache the result, using the set of Swift product codes as the key: the cache is valid until a product is installed or removed.
-
-## Other routes I tried
-
-Both are faster, and both have problems that rule them out as the main method.
-
-**Fixed-GUID `PATH` components.** Each package adds its `bin` folder to `PATH` through a component called `UserPathVariable`, and those GUIDs are hard-coded in the WiX source. The component has no key file, so `MsiGetComponentPathExW` returns its folder directly. On 6.4.0 it returned `Toolchains\6.4.0+Asserts\usr\bin\`, `Runtimes\6.4.0\usr\bin\` and `...\Windows.sdk\` instantly. But:
-
-- The runtime and SDK GUIDs differ between releases (`b83f6521…` for the 6.2 runtime, `bc309c80…` for 6.4), so swiftly would need a table of them.
-- From 6.4 on, the toolchain component is conditioned on `ADDTOOLCHAINTOPATH=1`. With Asserts and NoAsserts both installed, only the default one has it.
-- Every one is conditioned on `NOT ALLUSERS=1`, so per-machine installs, which `main` now supports, don't have them.
-
-**The bundle's persisted variables.** Burn 4 (engine 4.0.5.0 in both the 6.4.0 and 6.2.4 bundles) writes persisted variables to `HKCU\...\Uninstall\{bundle code}\variables`. `InstallRoot` is there, but as the raw formatted string, `[LocalAppDataFolder]Programs\Swift`, which swiftly would have to expand. On top of that:
-
-- It's Burn's private storage, not an interface.
-- It gives only the root, so swiftly would have to build `Toolchains\<version>+Asserts` itself from the layout.
-- It records what the bundle asked for, not where the MSIs actually put their files.
-- I haven't checked what it holds after an install to a custom folder.
